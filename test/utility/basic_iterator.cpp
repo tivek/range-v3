@@ -10,7 +10,8 @@
 // Project home: https://github.com/ericniebler/range-v3
 
 #include <list>
-#include <range/v3/core.hpp>
+#include <cstring>
+#include <range/v3/utility/basic_iterator.hpp>
 #include "../simple_test.hpp"
 #include "../test_utils.hpp"
 
@@ -126,6 +127,105 @@ namespace test_random_access
     }
 }
 
+namespace test_weak_output
+{
+    template<typename I>
+    struct cursor
+    {
+    private:
+        friend ranges::range_access;
+        I it_;
+        void set(ranges::iterator_value_t<I> v) const { *it_ = v; }
+        void next() { ++it_; }
+    public:
+        struct mixin : ranges::basic_mixin<cursor>
+        {
+            mixin() = default;
+            mixin(cursor c) : ranges::basic_mixin<cursor>(c) {}
+            mixin(I i) : ranges::basic_mixin<cursor>(cursor{i}) {}
+        };
+        cursor() = default;
+        explicit cursor(I i) : it_(i) {}
+    };
+
+    CONCEPT_ASSERT(ranges::detail::WeakOutputCursor<cursor<char*>, char>());
+
+    template<class I>
+    using iterator = ranges::basic_iterator<cursor<I>>;
+
+    CONCEPT_ASSERT(ranges::WeakOutputIterator<iterator<char*>, char>());
+
+    void test()
+    {
+        char buf[10];
+        iterator<char*> i(buf);
+        *i = 'h';
+        ++i;
+        *i = 'e';
+        ++i;
+        *i = 'l';
+        ++i;
+        *i = 'l';
+        ++i;
+        *i = 'o';
+        ++i;
+        *i = '\0';
+        CHECK(0 == std::strcmp(buf, "hello"));
+    }
+}
+
+namespace test_output
+{
+    template<typename I>
+    struct cursor
+    {
+        I it_;
+        struct mixin : ranges::basic_mixin<cursor>
+        {
+            mixin() = default;
+            mixin(cursor c) : ranges::basic_mixin<cursor>(c) {}
+            mixin(I i) : ranges::basic_mixin<cursor>(cursor{i}) {}
+        };
+        cursor() = default;
+        explicit cursor(I i) : it_(i) {}
+        template<class J, CONCEPT_REQUIRES_(ranges::ConvertibleTo<J, I>())>
+        cursor(cursor<J> that) : it_(std::move(that.it_)) {}
+
+        void set(ranges::iterator_value_t<I> v) const { *it_ = v; }
+        void next() { ++it_; }
+        bool equal(cursor const &that) const { return it_ == that.it_; }
+    };
+
+    CONCEPT_ASSERT(ranges::detail::OutputCursor<cursor<char*>, char>());
+
+    template<class I>
+    using iterator = ranges::basic_iterator<cursor<I>>;
+
+    CONCEPT_ASSERT(ranges::OutputIterator<iterator<char*>, char>());
+
+    void test()
+    {
+        char buf[10];
+        iterator<char*> i(buf);
+        *i = 'h';
+        ++i;
+        *i = 'e';
+        ++i;
+        *i = 'l';
+        ++i;
+        *i = 'l';
+        ++i;
+        *i = 'o';
+        ++i;
+        *i = '\0';
+        CHECK(0 == std::strcmp(buf, "hello"));
+        CHECK(i == iterator<char*>{buf+5});
+        ++i;
+        CHECK(i != iterator<char*>{buf+5});
+        CHECK(i == iterator<char*>{buf+6});
+    }
+}
+
 int main()
 {
     using namespace ranges;
@@ -133,6 +233,8 @@ int main()
 
     ::test_weak_input::test();
     ::test_random_access::test();
+    ::test_weak_output::test();
+    ::test_output::test();
 
     return ::test_result();
 }

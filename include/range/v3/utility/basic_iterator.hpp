@@ -160,20 +160,57 @@ namespace ranges
                         postfix_increment_proxy<I>,
                         writable_postfix_increment_proxy<I>>>;
 
-            template<typename Cur, typename Enable = void>
-            struct mixin_base_
-            {
-                using type = basic_mixin<Cur>;
-            };
+            template<typename Cur>
+            using cursor_reference_t =
+                decltype(range_access::current(std::declval<Cur const &>()));
+
+            template<typename Cur, typename Default>
+            struct cursor_reference_with_default_
+              : meta::if_<
+                    detail::ReadableCursor<Cur>,
+                    meta::defer<cursor_reference_t, Cur>,
+                    meta::id<Default>>
+            {};
 
             template<typename Cur>
-            struct mixin_base_<Cur, meta::void_<typename Cur::mixin>>
+            struct basic_proxy_reference
             {
-                using type = typename Cur::mixin;
+            private:
+                struct private_ {};
+                Cur cur_;
+            public:
+                // indirect_move with getters and setters?
+                basic_proxy_reference() = default;
+                basic_proxy_reference(basic_proxy_reference &&) = default;
+                basic_proxy_reference(basic_proxy_reference const &) = default;
+                RANGES_CXX14_CONSTEXPR
+                explicit basic_proxy_reference(Cur cur)
+                    noexcept(noexcept(Cur(std::move(cur))))
+                  : cur_(std::move(cur))
+                {}
+                CONCEPT_REQUIRES(detail::ReadableCursor<Cur>())
+                basic_proxy_reference const &operator=(basic_proxy_reference &&that) const
+                {
+                    return *this = that;
+                }
+                CONCEPT_REQUIRES(detail::ReadableCursor<Cur>())
+                basic_proxy_reference const &operator=(basic_proxy_reference const &that) const
+                {
+                    range_access::set(cur_, range_access::current(that.cur_));
+                    return *this;
+                }
+                CONCEPT_REQUIRES(detail::ReadableCursor<Cur>())
+                operator meta::_t<cursor_reference_with_default_<Cur, private_>>() const
+                {
+                    return range_access::current(cur_);
+                }
+                template<typename T, CONCEPT_REQUIRES_(WritableCursor<Cur, T>())>
+                basic_proxy_reference const &operator=(T &&t) const
+                {
+                    range_access::set(cur_, (T &&) t);
+                    return *this;
+                }
             };
-
-            template<typename Cur>
-            using mixin_base = meta::_t<mixin_base_<Cur>>;
 
             auto iter_cat(range_access::WeakInputCursor*) ->
                 ranges::weak_input_iterator_tag;
@@ -185,6 +222,48 @@ namespace ranges
                 ranges::bidirectional_iterator_tag;
             auto iter_cat(range_access::RandomAccessCursor*) ->
                 ranges::random_access_iterator_tag;
+
+            template<typename Cur, typename S>
+            struct iterator_associated_types_
+            {
+                using cursor_concept_t =
+                    meta::if_<
+                        Cursor<Cur>,
+                        range_access::OutputCursor,
+                        range_access::WeakOutputCursor>;
+                using difference_type = range_access::cursor_difference_t<Cur>;
+                // BUGBUG This is a bit messy:
+                using reference = detail::basic_proxy_reference<Cur>;
+
+                // BUGBUG make private
+                using postfix_increment_result_t = basic_iterator<Cur, S>;
+            };
+
+            template<typename Cur, typename S>
+            struct readable_iterator_associated_types_
+              : iterator_associated_types_<Cur, S>
+            {
+                using cursor_concept_t = detail::cursor_concept_t<Cur>;
+
+                // BUGBUG doesn't handle readable *and writable* cursors
+                using reference = detail::cursor_reference_t<Cur>;
+                using value_type = range_access::cursor_value_t<Cur>;
+                using iterator_category = decltype(detail::iter_cat(_nullptr_v<cursor_concept_t>()));
+                using pointer = meta::_t<std::add_pointer<reference>>;
+                using common_reference = common_reference_t<reference &&, value_type &>;
+
+                // BUGBUG make private
+                using postfix_increment_result_t =
+                    postfix_increment_result<
+                        basic_iterator<Cur, S>, value_type, reference, iterator_category>;
+            };
+
+            template<typename Cur, typename S>
+            using iterator_associated_types_base =
+                meta::if_<
+                    ReadableCursor<Cur>,
+                    readable_iterator_associated_types_<Cur, S>,
+                    iterator_associated_types_<Cur, S>>;
         }
         /// \endcond
 
@@ -219,7 +298,7 @@ namespace ranges
         };
 
         template<typename S>
-        struct basic_sentinel : detail::mixin_base<S>
+        struct basic_sentinel : range_access::mixin_base_t<S>
         {
             // http://gcc.gnu.org/bugzilla/show_bug.cgi?id=60799
             #ifndef __GNUC__
@@ -231,21 +310,21 @@ namespace ranges
             RANGES_CXX14_CONSTEXPR
             S &end() noexcept
             {
-                return this->detail::mixin_base<S>::get();
+                return this->range_access::mixin_base_t<S>::get();
             }
             RANGES_CXX14_CONSTEXPR
             S const &end() const noexcept
             {
-                return this->detail::mixin_base<S>::get();
+                return this->range_access::mixin_base_t<S>::get();
             }
         private:
-            using detail::mixin_base<S>::get;
+            using range_access::mixin_base_t<S>::get;
         public:
             basic_sentinel() = default;
             RANGES_CXX14_CONSTEXPR basic_sentinel(S end)
-              : detail::mixin_base<S>(std::move(end))
+              : range_access::mixin_base_t<S>(std::move(end))
             {}
-            using detail::mixin_base<S>::mixin_base;
+            using range_access::mixin_base_t<S>::mixin_base_t;
             constexpr bool operator==(basic_sentinel<S> const &) const
             {
                 return true;
@@ -258,36 +337,27 @@ namespace ranges
 
         template<typename Cur, typename S>
         struct basic_iterator
-          : detail::mixin_base<Cur>
+          : range_access::mixin_base_t<Cur>
+          , detail::iterator_associated_types_base<Cur, S>
         {
         private:
             friend range_access;
-            friend detail::mixin_base<Cur>;
+            friend range_access::mixin_base_t<Cur>;
             template<typename OtherCur, typename OtherS>
             friend struct basic_iterator;
-            // TODO support output iterators
-            //CONCEPT_ASSERT(detail::WeakCursor<Cur>());
-            CONCEPT_ASSERT(detail::WeakInputCursor<Cur>());
-            using single_pass = range_access::single_pass_t<Cur>;
-            using is_weak_t =
-                std::is_same<detail::cursor_concept_t<Cur>, range_access::WeakInputCursor>;
-            using cursor_concept_t =
-                meta::if_<
-                    is_weak_t,
-                    range_access::WeakInputCursor,
-                    meta::if_<
-                        single_pass,
-                        range_access::InputCursor,
-                        detail::cursor_concept_t<Cur>>>;
-
-            using detail::mixin_base<Cur>::get;
+            CONCEPT_ASSERT(detail::WeakCursor<Cur>());
+            using is_weak_t = meta::not_<detail::Cursor<Cur>>;
+            using assoc_types_ = detail::iterator_associated_types_base<Cur, S>;
+            using typename assoc_types_::postfix_increment_result_t;
+            using typename assoc_types_::cursor_concept_t;
+            using range_access::mixin_base_t<Cur>::get;
             RANGES_CXX14_CONSTEXPR Cur &pos() noexcept
             {
-                return this->detail::mixin_base<Cur>::get();
+                return this->range_access::mixin_base_t<Cur>::get();
             }
             RANGES_CXX14_CONSTEXPR Cur const &pos() const noexcept
             {
-                return this->detail::mixin_base<Cur>::get();
+                return this->range_access::mixin_base_t<Cur>::get();
             }
 
             // If the cursor models ForwardCursor, then positions are equality comparable.
@@ -311,33 +381,37 @@ namespace ranges
                 return basic_iterator::equal2_(that, _nullptr_v<cursor_concept_t>());
             }
         public:
-            using reference =
-                decltype(range_access::current(std::declval<Cur const &>()));
-            using value_type = range_access::cursor_value_t<Cur>;
-            using iterator_category = decltype(detail::iter_cat(_nullptr_v<cursor_concept_t>()));
-            using difference_type = range_access::cursor_difference_t<Cur>;
-            using pointer = meta::_t<std::add_pointer<reference>>;
-            using common_reference = common_reference_t<reference &&, value_type &>;
-        private:
-            using postfix_increment_result_t =
-                detail::postfix_increment_result<
-                    basic_iterator, value_type, reference, iterator_category>;
-        public:
+            using typename assoc_types_::reference;
+            using typename assoc_types_::difference_type;
             constexpr basic_iterator() = default;
             RANGES_CXX14_CONSTEXPR basic_iterator(Cur pos)
-              : detail::mixin_base<Cur>{std::move(pos)}
+              : range_access::mixin_base_t<Cur>{std::move(pos)}
             {}
             template<typename OtherCur, typename OtherS,
                 CONCEPT_REQUIRES_(ConvertibleTo<OtherCur, Cur>())>
             basic_iterator(basic_iterator<OtherCur, OtherS> that)
-              : detail::mixin_base<Cur>{std::move(that.pos())}
+              : range_access::mixin_base_t<Cur>{std::move(that.pos())}
             {}
             // Mix in any additional constructors defined and exported by the cursor
-            using detail::mixin_base<Cur>::mixin_base;
-            RANGES_CXX14_CONSTEXPR reference operator*() const
-                noexcept(noexcept(range_access::current(std::declval<basic_iterator const &>().pos())))
+            using range_access::mixin_base_t<Cur>::mixin_base_t;
+
+        private:
+            reference dereference_(range_access::WeakCursor *) const
+                noexcept(noexcept(reference(reference{std::declval<Cur const &>()})))
+            {
+                return reference{pos()};
+            }
+            reference dereference_(range_access::WeakInputCursor *) const
+                noexcept(noexcept(range_access::current(std::declval<Cur const &>())))
             {
                 return range_access::current(pos());
+            }
+        public:
+            RANGES_CXX14_CONSTEXPR reference operator*() const
+                noexcept(noexcept(std::declval<basic_iterator const &>().
+                    dereference_(_nullptr_v<cursor_concept_t>())))
+            {
+                return this->dereference_(_nullptr_v<cursor_concept_t>());
             }
             RANGES_CXX14_CONSTEXPR
             basic_iterator& operator++()
@@ -533,14 +607,14 @@ namespace ranges
             RANGES_CXX14_CONSTEXPR
             Cur &operator()(basic_iterator<Cur, Sent> &it) const noexcept
             {
-                detail::mixin_base<Cur> &mix = it;
+                range_access::mixin_base_t<Cur> &mix = it;
                 return mix.get();
             }
             template<typename Cur, typename Sent>
             RANGES_CXX14_CONSTEXPR
             Cur const &operator()(basic_iterator<Cur, Sent> const &it) const noexcept
             {
-                detail::mixin_base<Cur> const &mix = it;
+                range_access::mixin_base_t<Cur> const &mix = it;
                 return mix.get();
             }
             template<typename Cur, typename Sent>
@@ -548,7 +622,7 @@ namespace ranges
             Cur operator()(basic_iterator<Cur, Sent> &&it) const
                 noexcept(std::is_nothrow_copy_constructible<Cur>::value)
             {
-                detail::mixin_base<Cur> &mix = it;
+                range_access::mixin_base_t<Cur> &mix = it;
                 return std::move(mix.get());
             }
         };

@@ -153,12 +153,6 @@
     <ClCompile Include="..\..\..\..\test\view\repeat.cpp">
       <Filter>Test Files\view</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\test\range_facade.cpp">
-      <Filter>Test Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\test\range_adaptor.cpp">
-      <Filter>Test Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\test\view\counted.cpp">
       <Filter>Test Files\view</Filter>
     </ClCompile>
@@ -656,6 +650,12 @@
     </ClCompile>
     <ClCompile Include="..\..\..\..\test\view\any_view.cpp">
       <Filter>Test Files\view</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\test\view_adaptor.cpp">
+      <Filter>Test Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\test\view_facade.cpp">
+      <Filter>Test Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
