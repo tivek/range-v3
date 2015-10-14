@@ -234,6 +234,12 @@ namespace ranges
             (
                 pos.current()
             )
+            template<typename Cur>
+            static RANGES_CXX14_CONSTEXPR auto move(Cur const &pos)
+            RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
+            (
+                pos.move()
+            )
             template<typename Cur, typename T>
             static RANGES_CXX14_CONSTEXPR auto set(Cur const &pos, T &&t)
             RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
@@ -430,6 +436,21 @@ namespace ranges
 
             template<typename T>
             using cursor_concept_t = meta::_t<cursor_concept<T>>;
+
+            template<typename Cur, bool Readable = (bool) ReadableCursor<Cur>()>
+            struct is_writable_cursor_
+              : std::true_type
+            {};
+
+            template<typename Cur>
+            struct is_writable_cursor_<Cur, true>
+              : WritableCursor<Cur, range_access::cursor_value_t<Cur> &&>
+            {};
+
+            template<typename Cur>
+            struct is_writable_cursor
+              : detail::is_writable_cursor_<Cur>
+            {};
         }
         /// \endcond
     }
