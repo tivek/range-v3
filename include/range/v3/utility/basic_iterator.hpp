@@ -396,18 +396,21 @@ namespace ranges
             using range_access::mixin_base_t<Cur>::mixin_base_t;
 
         private:
+            RANGES_CXX14_CONSTEXPR
             reference dereference_(range_access::WeakCursor *) const
                 noexcept(noexcept(reference(reference{std::declval<Cur const &>()})))
             {
                 return reference{pos()};
             }
+            RANGES_CXX14_CONSTEXPR
             reference dereference_(range_access::WeakInputCursor *) const
                 noexcept(noexcept(range_access::current(std::declval<Cur const &>())))
             {
                 return range_access::current(pos());
             }
         public:
-            RANGES_CXX14_CONSTEXPR reference operator*() const
+            RANGES_CXX14_CONSTEXPR
+            reference operator*() const
                 noexcept(noexcept(std::declval<basic_iterator const &>().
                     dereference_(_nullptr_v<cursor_concept_t>())))
             {
