@@ -165,14 +165,6 @@ namespace ranges
             using cursor_reference_t =
                 decltype(range_access::current(std::declval<Cur const &>()));
 
-            template<typename Cur, typename Default>
-            struct cursor_reference_with_default_
-              : meta::if_<
-                    detail::ReadableCursor<Cur>,
-                    meta::defer<cursor_reference_t, Cur>,
-                    meta::id<Default>>
-            {};
-
             // Compute the rvalue reference type of a cursor
             template<typename Cur>
             auto cursor_move(Cur const &cur, int) ->
@@ -185,19 +177,14 @@ namespace ranges
             using cursor_rvalue_reference_t =
                 decltype(detail::cursor_move(std::declval<Cur const &>(), 42));
 
-            // Recursively define conversion operators from the proxy reference type
+            // Define conversion operators from the proxy reference type
             // to the common reference types, so that basic_iterator can model Readable
             // even with getters/setters.
-            template<typename Derived, typename List>
-            struct proxy_reference_conversions
-            {};
-
-            template<typename Derived, typename Head, typename ...Tail>
-            struct proxy_reference_conversions<Derived, meta::list<Head, Tail...>>
-              : proxy_reference_conversions<Derived, meta::list<Tail...>>
+            template<typename Derived, typename Head>
+            struct proxy_reference_conversion
             {
                 operator Head() const
-                    noexcept(noexcept(Head(Head(static_cast<Derived const *>(this)->get_()))))
+                    noexcept(noexcept(Head(Head(std::declval<Derived const &>().get_()))))
                 {
                     return Head(static_cast<Derived const *>(this)->get_());
                 }
@@ -207,7 +194,9 @@ namespace ranges
             template<typename Cur, bool Readable = (bool) ReadableCursor<Cur>()>
             struct cursor_traits
             {
+            private:
                 struct private_ {};
+            public:
                 using value_t_ = private_;
                 using reference_t_ = private_;
                 using rvalue_reference_t_ = private_;
@@ -220,6 +209,7 @@ namespace ranges
                 using value_t_ = range_access::cursor_value_t<Cur>;
                 using reference_t_ = cursor_reference_t<Cur>;
                 using rvalue_reference_t_ = cursor_rvalue_reference_t<Cur>;
+            private:
                 using R1 = reference_t_;
                 using R2 = common_reference_t<reference_t_ &&, value_t_ &>;
                 using R3 = common_reference_t<reference_t_ &&, rvalue_reference_t_ &&>;
@@ -228,25 +218,31 @@ namespace ranges
                     meta::if_<meta::in<tmp1, uncvref_t<R2>>, tmp1, meta::push_back<tmp1, R2>>;
                 using tmp3 =
                     meta::if_<meta::in<tmp2, uncvref_t<R3>>, tmp2, meta::push_back<tmp2, R3>>;
+            public:
                 using common_refs = meta::unique<meta::pop_front<tmp3>>;
             };
 
             // The One Proxy Reference type to rule them all. basic_iterator uses this
             // as the return type of operator* when the cursor type has a set() member
-            // function of the correct signature (i.e., if it accepts a value_type&&).
+            // function of the correct signature (i.e., if it can accept a value_type&&).
             template<typename Cur>
             struct basic_proxy_reference
               : cursor_traits<Cur>
-              , proxy_reference_conversions<
-                    basic_proxy_reference<Cur>,
-                    typename cursor_traits<Cur>::common_refs>
+                // The following adds conversion operators to the common reference
+                // types, so that basic_proxy_reference can model Readable
+              , meta::inherit<
+                    meta::transform<
+                        typename cursor_traits<Cur>::common_refs,
+                        meta::bind_front<
+                            meta::quote<proxy_reference_conversion>,
+                            basic_proxy_reference<Cur>>>>
             {
             private:
                 Cur cur_;
                 template<typename OtherCur>
                 friend struct basic_proxy_reference;
-                template<typename Derived, typename List>
-                friend struct proxy_reference_conversions;
+                template<typename, typename>
+                friend struct proxy_reference_conversion;
                 using typename cursor_traits<Cur>::value_t_;
                 using typename cursor_traits<Cur>::reference_t_;
                 using typename cursor_traits<Cur>::rvalue_reference_t_;
@@ -380,8 +376,8 @@ namespace ranges
             auto iter_cat(range_access::RandomAccessCursor*) ->
                 ranges::random_access_iterator_tag;
 
-            template<typename Cur, typename S>
-            struct iterator_associated_types_
+            template<typename Cur, typename S, bool Readable = (bool) ReadableCursor<Cur>()>
+            struct iterator_associated_types_base
             {
             private:
                 friend basic_iterator<Cur, S>;
@@ -397,8 +393,8 @@ namespace ranges
             };
 
             template<typename Cur, typename S>
-            struct readable_iterator_associated_types_
-              : iterator_associated_types_<Cur, S>
+            struct iterator_associated_types_base<Cur, S, true>
+              : iterator_associated_types_base<Cur, S, false>
             {
             private:
                 friend basic_iterator<Cur, S>;
@@ -410,7 +406,8 @@ namespace ranges
                         basic_proxy_reference<Cur>,
                         cursor_reference_t<Cur>>;
                 using value_type = range_access::cursor_value_t<Cur>;
-                using iterator_category = decltype(detail::iter_cat(_nullptr_v<cursor_concept_t>()));
+                using iterator_category =
+                    decltype(detail::iter_cat(_nullptr_v<cursor_concept_t>()));
                 using pointer = meta::_t<std::add_pointer<reference>>;
                 using common_reference = common_reference_t<reference &&, value_type &>;
             private:
@@ -418,13 +415,6 @@ namespace ranges
                     postfix_increment_result<
                         basic_iterator<Cur, S>, value_type, reference, iterator_category>;
             };
-
-            template<typename Cur, typename S>
-            using iterator_associated_types_base =
-                meta::if_<
-                    ReadableCursor<Cur>,
-                    readable_iterator_associated_types_<Cur, S>,
-                    iterator_associated_types_<Cur, S>>;
         }
         /// \endcond
 
@@ -478,9 +468,6 @@ namespace ranges
             {
                 return this->range_access::mixin_base_t<S>::get();
             }
-        private:
-            using range_access::mixin_base_t<S>::get;
-        public:
             basic_sentinel() = default;
             RANGES_CXX14_CONSTEXPR basic_sentinel(S end)
               : range_access::mixin_base_t<S>(std::move(end))
@@ -511,7 +498,6 @@ namespace ranges
             using assoc_types_ = detail::iterator_associated_types_base<Cur, S>;
             using typename assoc_types_::postfix_increment_result_t;
             using typename assoc_types_::cursor_concept_t;
-            using range_access::mixin_base_t<Cur>::get;
             RANGES_CXX14_CONSTEXPR Cur &pos() noexcept
             {
                 return this->range_access::mixin_base_t<Cur>::get();
@@ -564,7 +550,7 @@ namespace ranges
                 return reference{pos()};
             }
             RANGES_CXX14_CONSTEXPR
-            reference dereference_(std::false_type  /*non-Writable cursor*/) const
+            reference dereference_(std::false_type /*non-Writable cursor*/) const
                 noexcept(noexcept(range_access::current(std::declval<Cur const &>())))
             {
                 return range_access::current(pos());

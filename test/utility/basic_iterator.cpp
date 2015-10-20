@@ -204,7 +204,7 @@ namespace test_output
 
     template<class I>
     using iterator = ranges::basic_iterator<cursor<I>>;
-    
+
     CONCEPT_ASSERT(ranges::OutputIterator<iterator<char*>, char>());
     CONCEPT_ASSERT(ranges::ForwardIterator<iterator<char*>>());
 
@@ -271,13 +271,13 @@ namespace test_move_only
         bool equal(zip1_cursor const &that) const { return it_ == that.it_; }
     };
 
-    CONCEPT_ASSERT(ranges::detail::OutputCursor<zip1_cursor<MoveOnly*>, std::tuple<MoveOnly>>());
+    CONCEPT_ASSERT(ranges::detail::OutputCursor<zip1_cursor<MoveOnly*>, std::tuple<MoveOnly>&&>());
     CONCEPT_ASSERT(ranges::detail::ForwardCursor<zip1_cursor<MoveOnly*>>());
 
     template<class I>
     using iterator = ranges::basic_iterator<zip1_cursor<I>>;
 
-    CONCEPT_ASSERT(ranges::OutputIterator<iterator<MoveOnly*>, std::tuple<MoveOnly>>());
+    CONCEPT_ASSERT(ranges::OutputIterator<iterator<MoveOnly*>, std::tuple<MoveOnly>&&>());
     CONCEPT_ASSERT(ranges::ForwardIterator<iterator<MoveOnly*>>());
 
     void test()
