@@ -748,16 +748,6 @@ namespace ranges
             {
                 return *(*this + n);
             }
-            // Optionally support hooking iter_move when the cursor sports a
-            // move() member function.
-            template<class C = Cur,
-                CONCEPT_REQUIRES_(Same<C, Cur>() && detail::WeakInputCursor<C>())>
-            RANGES_CXX14_CONSTEXPR
-            friend auto indirect_move(basic_iterator<C, S> const &it)
-            RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
-            (
-                range_access::move(it.pos())
-            )
         };
 
         /// Get a cursor from a basic_iterator
@@ -794,6 +784,22 @@ namespace ranges
             constexpr auto &&get_cursor = static_const<get_cursor_fn>::value;
         }
         /// @}
+
+        /// \cond
+        namespace detail
+        {
+            // Optionally support hooking iter_move when the cursor sports a
+            // move() member function.
+            template<typename C, typename S,
+                CONCEPT_REQUIRES_(WeakInputCursor<C>())>
+            RANGES_CXX14_CONSTEXPR
+            auto indirect_move(basic_iterator<C, S> const &it)
+            RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
+            (
+                range_access::move(get_cursor(it))
+            )
+        }
+        /// \endcond
 
         /// \cond
         // This is so that writable postfix proxy objects satisfy Readability

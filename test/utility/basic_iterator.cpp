@@ -285,7 +285,7 @@ namespace test_move_only
         MoveOnly buf[10] = {};
         iterator<MoveOnly*> i(buf);
         *i = std::tuple<MoveOnly>{};
-        ranges::common_tuple<MoveOnly&> x = *i;
+        ranges::common_tuple<MoveOnly&> x = *i; (void)x;
         std::tuple<MoveOnly> v = ranges::iter_move(i);
         *i = std::move(v);
     }

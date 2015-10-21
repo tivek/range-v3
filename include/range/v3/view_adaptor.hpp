@@ -116,7 +116,8 @@ namespace ranges
                 return it0 == it1;
             }
             template<typename I, CONCEPT_REQUIRES_(WeakIterator<I>())>
-            static iterator_reference_t<I> current(I const &it, detail::adaptor_base_current_mem_fn = {})
+            static iterator_reference_t<I> current(I const &it,
+                detail::adaptor_base_current_mem_fn = {})
                 noexcept(noexcept(iterator_reference_t<I>(*it)))
             {
                 return *it;
@@ -148,12 +149,30 @@ namespace ranges
             }
         };
 
+        /// \cond
+        namespace detail
+        {
+            template<typename Cursor>
+            struct adaptor_cursor_move
+            {
+                // Gives users a way to override the default indirect_move function in their adaptors.
+                template<typename Sent>
+                friend auto indirect_move(basic_iterator<Cursor, Sent> const &it)
+                RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
+                (
+                    get_cursor(it).indirect_move_(42)
+                )
+            };
+        }
+        /// \endcond
+
         // Build a cursor out of an iterator into the adapted range, and an
         // adaptor that customizes behavior.
         template<typename BaseIter, typename Adapt>
         struct adaptor_cursor
           : private compressed_pair<BaseIter, Adapt>
           , detail::adaptor_value_type<BaseIter, Adapt>
+          , detail::adaptor_cursor_move<adaptor_cursor<BaseIter, Adapt>>
         {
             using single_pass = meta::or_<
                 range_access::single_pass_t<Adapt>,
@@ -161,6 +180,7 @@ namespace ranges
             using compressed_pair<BaseIter, Adapt>::compressed_pair;
             struct mixin : basic_mixin<adaptor_cursor>
             {
+                mixin() = default;
                 using basic_mixin<adaptor_cursor>::basic_mixin;
                 // All iterators into adapted ranges have a base() member for fetching
                 // the underlying iterator.
@@ -198,6 +218,7 @@ namespace ranges
             {
                 return second.distance_to(first, that.first);
             }
+        public:
             // If the adaptor has an indirect_move function, use it.
             template<typename A = Adapt,
                 typename X = decltype(std::declval<A>().indirect_move(first))>
@@ -231,8 +252,7 @@ namespace ranges
             // member function, apply std::move to the result of calling current.
             template<typename A = Adapt,
                 typename R = decltype(std::declval<A>().current(first)),
-                typename X =
-                    meta::if_<std::is_reference<R>, meta::_t<std::remove_reference<R>> &&, R>>
+                typename X = aux::move_t<R>>
             X indirect_move_(detail::any) const
                 noexcept(noexcept(X(static_cast<X &&>(std::declval<R>()))))
             {
@@ -245,15 +265,6 @@ namespace ranges
                     "in your adaptor.");
                 return static_cast<X &&>(second.current(first));
             }
-            // Gives users a way to override the default indirect_move function in their adaptors.
-            template<typename Sent, typename M = mixin>
-            friend auto indirect_move(basic_iterator<adaptor_cursor, Sent> const &it)
-                noexcept(noexcept(std::declval<M const &>().get().indirect_move_(42))) ->
-                decltype(std::declval<M const &>().get().indirect_move_(42))
-            {
-                return get_cursor(it).indirect_move_(42);
-            }
-        public:
             template<typename A = Adapt,
                 typename R = decltype(std::declval<A>().current(first))>
             R current() const

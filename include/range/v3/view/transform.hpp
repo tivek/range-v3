@@ -50,6 +50,19 @@ namespace ranges
                             unknown :
                             infinite;
             }
+
+            // indirect_move is put here instead of in iter_transform2_view::cursor to
+            // work around gcc friend name injection bug.
+            template<typename Cursor>
+            struct transform2_cursor_move
+            {
+                template<typename Sent>
+                friend auto indirect_move(basic_iterator<Cursor, Sent> const &it)
+                RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
+                (
+                    get_cursor(it).indirect_move_()
+                )
+            };
         }
         /// \endcond
 
@@ -150,6 +163,7 @@ namespace ranges
 
             struct sentinel;
             struct cursor
+              : detail::transform2_cursor_move<cursor>
             {
             private:
                 friend sentinel;
@@ -158,12 +172,6 @@ namespace ranges
                 range_iterator_t<Rng1> it1_;
                 range_iterator_t<Rng2> it2_;
 
-                template<typename Sent>
-                friend auto indirect_move(basic_iterator<cursor, Sent> const &it)
-                RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
-                (
-                    get_cursor(it).fun_(move_tag{}, get_cursor(it).it1_, get_cursor(it).it2_)
-                )
             public:
                 using difference_type = difference_type_;
                 using single_pass = meta::or_c<
@@ -214,6 +222,11 @@ namespace ranges
                     difference_type d1 = that.it1_ - it1_, d2 = that.it2_ - it2_;
                     return 0 < d1 ? std::min(d1, d2) : std::max(d1, d2);
                 }
+                auto indirect_move_() const
+                RANGES_DECLTYPE_AUTO_RETURN_NOEXCEPT
+                (
+                    fun_(move_tag{}, it1_, it2_)
+                )
             };
 
             struct sentinel
