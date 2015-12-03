@@ -247,23 +247,43 @@ namespace ranges
 
         template<typename Second, typename First>
         struct composed
-          : private box<Second, meta::size_t<0>>
-          , private box<First, meta::size_t<1>>
         {
+        private:
+            Second second_;
+            First first_;
+
+            template<typename A, typename B, typename...Ts>
+            static auto do_(A &&a, B &&b, std::false_type, Ts &&...ts)
+            RANGES_DECLTYPE_AUTO_RETURN
+            (
+                b(a((Ts &&) ts...))
+            )
+            template<typename A, typename B, typename...Ts>
+            static auto do_(A &&a, B &&b, std::true_type, Ts &&...ts)
+            RANGES_DECLTYPE_AUTO_RETURN
+            (
+                a((Ts &&) ts...),
+                b()
+            )
+        public:
             composed() = default;
             composed(Second second, First first)
-              : box<Second, meta::size_t<0>>{std::move(second)}
-              , box<First, meta::size_t<1>>{std::move(first)}
+              : second_(std::move(second))
+              , first_(std::move(first))
             {}
-            template<typename...Ts>
+            template<typename...Ts,
+                typename FirstResultT = concepts::Function::result_t<First &, Ts &&...>>
             auto operator()(Ts &&...ts)
-            RANGES_DECLTYPE_AUTO_RETURN(
-                ranges::get<0>(*this)(ranges::get<1>(*this)((Ts &&)ts)...)
+            RANGES_DECLTYPE_AUTO_RETURN
+            (
+                composed::do_(first_, second_, std::is_void<FirstResultT>{}, (Ts &&) ts...)
             )
-            template<typename...Ts>
+            template<typename...Ts,
+                typename FirstResultT = concepts::Function::result_t<First const &, Ts &&...>>
             auto operator()(Ts &&...ts) const
-            RANGES_DECLTYPE_AUTO_RETURN(
-                ranges::get<0>(*this)(ranges::get<1>(*this)((Ts &&)ts)...)
+            RANGES_DECLTYPE_AUTO_RETURN
+            (
+                composed::do_(first_, second_, std::is_void<FirstResultT>{}, (Ts &&) ts...)
             )
         };
 
