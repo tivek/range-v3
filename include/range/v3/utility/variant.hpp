@@ -272,7 +272,7 @@ namespace ranges
                 }
             };
 
-            struct delete_fun
+            struct delete_fn
             {
                 template<typename T>
                 void operator()(T const &t) const
@@ -282,7 +282,7 @@ namespace ranges
             };
 
             template<std::size_t N, typename... Ts>
-            struct construct_fun
+            struct construct_fn
             {
                 std::tuple<Ts...> args_;
 
@@ -292,7 +292,7 @@ namespace ranges
                     ::new((void*)std::addressof(u)) U(std::forward<Ts>(std::get<Is>(args_))...);
                 }
 
-                construct_fun(Ts &&...ts)
+                construct_fn(Ts &&...ts)
                   : args_{std::forward<Ts>(ts)...}
                 {}
                 template<typename U, std::size_t M>
@@ -315,7 +315,7 @@ namespace ranges
             };
 
             template<typename T, std::size_t N>
-            struct get_fun
+            struct get_fn
             {
                 T **t_;
 
@@ -435,7 +435,7 @@ namespace ranges
             {
                 if(valid())
                 {
-                    detail::variant_visit_(data_, index_, detail::delete_fun{}, ident{});
+                    detail::variant_visit_(data_, index_, detail::delete_fn{}, ident{});
                     index_ = (std::size_t)-1;
                 }
             }
@@ -500,7 +500,7 @@ namespace ranges
             void emplace(Args &&...args)
             {
                 this->clear_();
-                detail::construct_fun<N, Args&&...> fn{std::forward<Args>(args)...};
+                detail::construct_fn<N, Args&&...> fn{std::forward<Args>(args)...};
                 detail::variant_visit_(data_, N, std::ref(fn), ident{});
                 index_ = N;
             }
@@ -576,7 +576,7 @@ namespace ranges
                 meta::_t<std::tuple_element<N, variant<Ts...>>>>>;
             elem_t *elem = nullptr;
             detail::variant_visit_(detail::variant_core_access::data(var),
-                var.index(), detail::get_fun<elem_t, N>{&elem});
+                var.index(), detail::get_fn<elem_t, N>{&elem});
             return detail::variant_deref_(elem);
         }
 
@@ -589,7 +589,7 @@ namespace ranges
                 meta::_t<std::tuple_element<N, variant<Ts...> const>>>>;
             elem_t *elem = nullptr;
             detail::variant_visit_(detail::variant_core_access::data(var),
-                var.index(), detail::get_fun<elem_t, N>{&elem});
+                var.index(), detail::get_fn<elem_t, N>{&elem});
             return detail::variant_deref_(elem);
         }
 
@@ -601,7 +601,7 @@ namespace ranges
                 meta::_t<std::tuple_element<N, variant<Ts...>>>>>;
             elem_t *elem = nullptr;
             detail::variant_visit_(detail::variant_core_access::data(var),
-                var.index(), detail::get_fun<elem_t, N>{&elem});
+                var.index(), detail::get_fn<elem_t, N>{&elem});
             using res_t = meta::_t<std::add_rvalue_reference<
                 meta::_t<std::tuple_element<N, variant<Ts...>>>>>;
             return static_cast<res_t>(detail::variant_deref_(elem));
